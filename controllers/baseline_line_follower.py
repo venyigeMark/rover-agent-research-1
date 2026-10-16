@@ -135,6 +135,7 @@ def szenzor_mezok(observe: dict[str, Any]) -> dict[str, Any]:
         "sensor_center": observe.get("sensor_center"),
         "sensor_right": observe.get("sensor_right"),
         "lidar_szektor_min": observe.get("lidar_szektor_min"),
+        "lidar_nyers": observe.get("lidar_nyers"), # <-- Hozzáadva az M11 audit alapján
     }
 
 
@@ -148,9 +149,11 @@ def privilegizalt_diagnosztika_mezok(observe: dict[str, Any]) -> dict[str, Any]:
 
 class GatewayKliens:
     def __init__(self, host: str, port: int) -> None:
-        self.socket = socket.create_connection((host, port), timeout=5)
-        self.socket.settimeout(None)
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.socket.settimeout(10.0)  # <-- Itt állítjuk be a socket timeoutot
+        self.socket.connect((host, port))
 
+        # A korábbi settimeout(None) törölhető vagy maradhat, de a 10s védi a csatlakozást.
     def kuld(self, parancs: dict[str, Any]) -> dict[str, Any]:
         parancs = {"request_id": str(uuid4()), **parancs}
         payload = json.dumps(parancs, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
@@ -703,7 +706,7 @@ def _parameterek() -> dict:
     return {
         nev: ertek
         for nev, ertek in sorted(globals().items())
-        if nev.isupper() and isinstance(ertek, (int, float, tuple,list))
+        if nev.isupper() and isinstance(ertek, (int, float, tuple, list)) #List tipus engedélyezve
     }
 
 
@@ -869,7 +872,7 @@ def main() -> int:
         "--seed",
         type=int,
         default=None,
-        help="A hasznalt szcenario seed-je, kizarolag naplozasi celra.",
+        help="A hasznalt szcenario seed-je (noise_seed a Unitynek és naplózási célú).",
     )
     parser.add_argument(
         "--elvart-szcenario",
