@@ -82,6 +82,8 @@ rövid ablakokban láthatók; az M10/M10.5 végleges mérések a
 `stadium-train-baseline-always-visible.json` szcenárióval készültek.
 
 ```bash
+#Megbizonyosodunk róla hogy a HEAD-en lévő v3 kontrollert futtassa az instrukció
+git checkout 7d86198
 # N futas egymas utan + automatikus osszesites (csak az uj futasokra)
 python3 controllers/futtat_kiserletet.py --futasok-szama 30
 

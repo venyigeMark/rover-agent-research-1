@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Hagyományos (AI nélküli) vonalkövető baseline kontroller - M09/M10/M10.5/M11.
+"""Baseline vonalkövető és akadálykerülő kontroller - M09/M10/M10.5/M11.
 
-Állapotgép (VONALON / KERESÉS / AKADÁLY) + P-szabályozó a bal/jobb
+A vezérlő négy fő állapot között vált: VONALON, AKADALY, VISSZATALALAS és KERESES.
+A kerülés a nyers lidar sugarakból dönt.
+Állapotgép (VONALON / KERESÉS / AKADÁLY / VISSZATALALAS) + P-szabályozó a bal/jobb
 szenzor intenzitáskülönbségére. A vezérlési döntések kizárólag az
-observe válasz sensor_left/center/right és lidar_szektor_min
+observe válasz sensor_left/center/right és lidar_szektor_min / lidar_nyers
 mezőire támaszkodnak, nem használják a position/speed/collision_*
 privilegizált szimulátor-mezőket (ezek csak a lépésenkénti
 diagnosztikai naplóba kerülnek).
@@ -666,6 +668,7 @@ def egy_lepes_kereses(
             lepes_szam,
             szenzor_mezok(observe),
             [turn_parancs],
+            
             Allapot.KERESES.value,
             Allapot.KERESES.value,
             privilegizalt_diagnosztika_mezok(observe),
@@ -700,7 +703,7 @@ def _parameterek() -> dict:
     return {
         nev: ertek
         for nev, ertek in sorted(globals().items())
-        if nev.isupper() and isinstance(ertek, (int, float, tuple))
+        if nev.isupper() and isinstance(ertek, (int, float, tuple,list))
     }
 
 

@@ -358,7 +358,10 @@ Az 1. mérés 4 pályaelhagyása ugyanaz a határeset volt: a visszatérés 40 l
 után kb. 10 cm-re állt meg a vonaltól, és a keresés a vonaltól elfelé fordult.
 A v2 egyetlen változtatása: sikertelen visszatérés után a keresés a vonal
 felőli oldalra indul. Egy elvetett próbálkozás (párhuzamosra fordulás a vak
-zóna előtt) egyetlen próbafutásban 20 ütközést adott, ezért visszavontuk.
+zóna előtt) egyetlen próbafutásban 20 ütközést adott, ezért visszavontuk. 
+Közben a 5f3c685 commitban bekerült egy változtatás(nettó fordulat előjele 
+alapján történő visszatérés), és a holdout mérés (2/30) ezen a kódon futott le, 
+mielőtt visszavontuk volna.
 
 - Mérés, szcenárió, sikerfeltétel: azonos az 1. méréssel (30 futás, 1500 lépés,
   always-visible; kör ≥ 1, 0 ütközés, nincs pályaelhagyás).
@@ -366,7 +369,7 @@ zóna előtt) egyetlen próbafutásban 20 ütközést adott, ezért visszavontuk
   futások száma legalább 25/30 (nem rosszabb az 1. mérésnél). Ha kevesebb, az
   M13 az 1. mérés kódjához (0124aa1) mér, és a v2-t elvetjük.
 - Adatok: docs/m10-v2-meres.json és docs/m10-v2-meres-meta.jsonl (a mérés után
-  jönnek létre).
+  jönnek létre). A docs/m10-v2-meres.json elmaradt!
 
 ### Helyesbítés (2026-10-08, külső átvizsgálás után)
 
