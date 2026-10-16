@@ -56,6 +56,18 @@ public class RoverGatewayServer : MonoBehaviour
     private LidarSensor lidar;
     private Vector3 kezdoPozicio;
     private Quaternion kezdoForgatas;
+    
+    [Header("GPS Célpontok (Végpontok)")]
+    [SerializeField]
+    private Vector3[] gpsPontok = new Vector3[] {
+    new Vector3(1f, 0f, 2f),   // Példa pontok, a Unity Inspectorban felülírhatod
+    new Vector3(1f, 0f, -2f),
+    new Vector3(-1f, 0f, -2f),
+    new Vector3(-1f, 0f, 2f)
+};
+    private int aktualisGpsIndex = 0;
+    private bool eppMostErteEl = false;
+    private const float GpsKuszob = 0.5f; // 50 cm-es pontosság a cél eléréséhez
 
     // --- M10: utkozesdetektalas (hiba-taxonomia "utkozes" kategoriaja) ---
     // A TrackController "Akadaly" taggel latja el a letrehozott akadalyokat
@@ -141,6 +153,9 @@ public class RoverGatewayServer : MonoBehaviour
         public HibaAdat error;
         public Pozicio position;
         public float speed;
+        public float target_distance;
+        public float target_angle;
+        public bool gps_reached;
         public string sensor_mode;
         public SzenzorErtek sensor_left;
         public SzenzorErtek sensor_center;
@@ -220,6 +235,7 @@ public class RoverGatewayServer : MonoBehaviour
         lidar = GetComponentInChildren<LidarSensor>();
         kezdoPozicio = rigidBody.position;
         kezdoForgatas = rigidBody.rotation;
+        Time.timeScale = 10f;
     }
 
     private void Start()
@@ -276,6 +292,22 @@ public class RoverGatewayServer : MonoBehaviour
 
     private void FixedUpdate()
     {
+        
+        eppMostErteEl = false;
+        if (gpsPontok != null && gpsPontok.Length > 0 && aktualisGpsIndex < gpsPontok.Length)
+        {
+            float tavolsag = Vector3.Distance(rigidBody.position, gpsPontok[aktualisGpsIndex]);
+            if (tavolsag < GpsKuszob)
+            {
+                aktualisGpsIndex++;
+                eppMostErteEl = true;
+                if (aktualisGpsIndex >= gpsPontok.Length)
+                {
+                    aktualisGpsIndex = 0; // Ha körbeért, kezdje elölről
+                }
+            }
+        }
+
         KapcsolatBontasokFeldolgozasa();
 
         while (keresek.TryDequeue(out FuggobenLevoKeres keres))
@@ -569,9 +601,19 @@ public class RoverGatewayServer : MonoBehaviour
         switch (keres.Command)
         {
             case "observe":
-                string szenzorMod = szenzorTomb != null && szenzorTomb.HaromSzenzorosMod
-                    ? "three"
-                    : "single";
+                string szenzorMod = szenzorTomb != null && szenzorTomb.HaromSzenzorosMod ? "three" : "single";
+
+                // ÚJ BLOKK: Relatív vektor kiszámítása
+                float celTavolsag = 0f;
+                float celSzog = 0f;
+                if (gpsPontok != null && gpsPontok.Length > 0 && aktualisGpsIndex < gpsPontok.Length)
+                {
+                    Vector3 celIrany = gpsPontok[aktualisGpsIndex] - rigidBody.position;
+                    celIrany.y = 0; // Csak 2D-s síkban (XZ) navigálunk
+                    celTavolsag = celIrany.magnitude;
+                    celSzog = Vector3.SignedAngle(transform.forward, celIrany, Vector3.up);
+                }
+
                 valasz = JsonUtility.ToJson(new ObserveValasz
                 {
                     request_id = keres.RequestId,
@@ -594,10 +636,20 @@ public class RoverGatewayServer : MonoBehaviour
                         szenzorTomb != null ? szenzorTomb.JobbErtek : 0f
                     ),
                     lidar_szektor_min = lidar != null ? lidar.SzektorMinTavolsag : new float[0],
+<<<<<<< Updated upstream
                     lidar_nyers = lidar != null ? lidar.NyersTavolsagok : new float[0],
                     lidar_nyers_ervenyes = lidar != null ? lidar.ErvenyessegiMaszk : new bool[0],
                         collision_occurred = utkozesTortentAzUtolsoResetOta,
                         collision_count = utkozesekSzamaAzUtolsoResetOta
+=======
+                    collision_occurred = utkozesTortentAzUtolsoResetOta,
+                    collision_count = utkozesekSzamaAzUtolsoResetOta,
+
+                    // ÚJ MEZŐK KITÖLTÉSE
+                    target_distance = celTavolsag,
+                    target_angle = celSzog,
+                    gps_reached = eppMostErteEl
+>>>>>>> Stashed changes
                 });
                 break;
 
@@ -739,6 +791,7 @@ public class RoverGatewayServer : MonoBehaviour
                 utkozesekSzamaAzUtolsoResetOta = 0;
                    trackController?.UjrakezdiAkadalyUtemezest();
                 utolsoUtkozesIdopontja = float.NegativeInfinity;
+                aktualisGpsIndex = 0; // ÚJ SOR: Célpontok nullázása
                 valasz = SikerValasz(
                     keres.RequestId,
                     "A rover visszaallt a kezdohelyzetbe. scenario="
