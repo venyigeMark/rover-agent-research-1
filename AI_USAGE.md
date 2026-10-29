@@ -882,6 +882,51 @@ teljesült. A 4 pályaelhagyás ugyanott történt; ezt nem javítottuk utólag.
 terminál többször elvágta; a megoldás a rövid, ellenőrző összeggel (md5)
 igazolt darabok lettek.
 
+*Pontosítás (2026-10-26):* a „kapu teljesült" csak a train szcenárióra igaz;
+a holdout-mérés ezt nem igazolta. Lásd a 31. pontot és a `docs/m10-plan.md`
+„Helyesbítés" szakaszát.
+
+### 31. Második audit, holdout és a mérési lánc javítása (2026-10-08 – 10-26)
+
+**Eszköz:** Claude (Claude Code). A Unity-méréseket Dalma futtatta a saját
+gépén; 2026-10-26-tól Claude a repóba közvetlenül is commitol (GitHub-alkalmazás,
+Dalma engedélyével), a commitokat a `Co-Authored-By` sor jelöli.
+
+**M10 holdout és validáció.** Egy külső audit után a v1-es baseline-t egy
+előre regisztrált holdout pályán is lemértük: 2/30 (bukás). A javított v3
+(lengő keresés, `6ea4858`) egy seedből generált validációs pályán 28/30-at,
+a train pályán regresszióként 29/30-at ért el; ez lett az M13 baseline.
+Részletek és korlátok: `docs/m10-plan.md`.
+
+**Az AI hibái ebben a szakaszban:**
+- egy auditori hipotézisre épülő előjel-javítás (a nettó fordulat előjele
+  nem azt mutatja, merre van a vonal) rontott a holdout eredményén;
+  visszavonva, dokumentálva;
+- a kör-metrika minden pályán a train geometriájával számolt, így a holdout
+  vonalon-aránya és hatékonysága hibás volt; javítva (`e5f6be1`);
+- egy mérés futásszintű összesítője kimaradt a commitból; pótolva.
+
+**Javítások 2026-10-26-án (a gyűjtő-issue Unity nélküli pontjai):**
+- egységes sikerfeltétel (kör + 0 ütközés + nincs pályaelhagyás) a
+  szcenárió saját geometriájával, `run_id` a futásszintű összesítőben;
+- futtató: érthető hiba üres szcenárió-névnél, 30 s-os socket-timeout,
+  az elutasított gateway-parancs megállítja a futást (korábban csendben
+  folytatódott), teljes KERESES-naplózás, `summarize_runs` KeyError;
+- adapter: az ütközésjelzés reset után nem vész el, nincs hamis
+  stop-nyugta backend-hiba után, a `UnityTcpBackend` ellenőrzi a
+  `request_id`-t és tesztekkel fedett;
+- lock-fájlok (`requirements-ci.txt`, `requirements-mcp.txt`), a
+  referenciaepizód ellenőrzése nem írja felül a verziókövetett képet,
+  `docs/sensors.md` és a gateway README a kódhoz igazítva.
+
+Minden javítás regressziós tesztet kapott (61 Python- és 31 adapterteszt);
+a viselkedést megváltoztató pont (elutasítás = futás megáll) a commitban és
+itt is jelölve.
+
+**Az ember döntései:** a holdout-mérés elvégzése a hibás baseline
+befagyasztása helyett (A opció); a v3 elfogadása M13 baselinenak; a nyitott
+pontok lezárása az M13 előtt.
+
 ## Megjegyzések
 
 - Minden AI által generált kódot (Codex és Claude egyaránt) átnéztem és

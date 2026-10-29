@@ -27,7 +27,7 @@ verziókövetésből kizárva.
 ```bash
 /usr/bin/python3 -m venv .venv
 source .venv/bin/activate
-pip install "black==25.11.0" "pyflakes==3.4.0" "jsonschema==4.25.1" matplotlib
+python -m pip install -r requirements-ci.txt
 ```
 
 | Csomag | Verzió | Mire kell |
@@ -35,7 +35,12 @@ pip install "black==25.11.0" "pyflakes==3.4.0" "jsonschema==4.25.1" matplotlib
 | black | 25.11.0 | formázás-ellenőrzés (a verzió rögzítve: a black stabil stílusa évente változik) |
 | pyflakes | 3.4.0 | statikus kódellenőrzés |
 | jsonschema | 4.25.1 | szcenárió- és protokoll-séma validáció |
-| matplotlib | (bármelyik friss) | replay-vizualizáció és videó |
+| matplotlib | 3.9.4 (Python 3.9 alatt) | replay-vizualizáció és videó |
+
+A teljes, tranzitív függőségekkel együtt rögzített lista a
+`requirements-ci.txt` (lock-fájl, `uv pip compile`-lal generálva); a CI
+is ebből telepít, így a helyi és a CI-környezet ugyanazokat a verziókat
+kapja. Az MCP-szerver lock-fájlja a `requirements-mcp.txt`.
 
 A kontrollerek és a `common/` modulok maguk csak a Python standard
 library-t használják; a fenti csomagok az ellenőrzésekhez és a
@@ -47,7 +52,7 @@ Az MCP Python SDK 3.10+-t igényel, ezért az adapter MCP-szervere nem a
 projekt venv-jéből fut, hanem izoláltan:
 
 ```bash
-uv run --no-project --python 3.12 --with mcp \
+uv run --no-project --python 3.12 --with-requirements requirements-mcp.txt \
   python adapter/mcp_szerver.py --backend mock
 ```
 

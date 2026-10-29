@@ -1,5 +1,7 @@
 gateway/logs/*.jsonl
 logs/*.jsonl
+logs/referencia_replay.png
+experiments/scenarios/aktiv_szcenario.txt
 .idea/
 .DS_Store
 

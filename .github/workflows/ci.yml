@@ -20,7 +20,7 @@ jobs:
       - name: Fuggosegek telepitese
         run: |
           python -m pip install --upgrade pip
-          pip install matplotlib jsonschema==4.25.1 pyflakes==3.4.0 black==25.11.0
+          pip install -r requirements-ci.txt
 
       - name: Baseline kontroller tesztek
         run: python3 tests/baseline_line_follower_test.py
@@ -30,6 +30,12 @@ jobs:
 
       - name: Kerules oldal- es vakzona-tesztek
         run: python3 tests/kerules_oldal_test.py
+
+      - name: Kor-metrika es egyseges sikerfeltetel tesztek
+        run: python3 tests/kor_metrika_test.py
+
+      - name: Futtato es kliens robusztussagi tesztek
+        run: python3 tests/futtato_robusztussag_test.py
 
       - name: Kiserlet-naplo tesztek
         run: python3 tests/kiserlet_naplo_test.py

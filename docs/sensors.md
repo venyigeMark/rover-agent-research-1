@@ -54,6 +54,25 @@ sorozatot adja — ez teszi lehetővé, hogy egy adott futás
 determinisztikusan reprodukálható legyen (hasonlóan a
 `docs/scenario-schema.md`-ban dokumentált szcenárió-seedekhez).
 
+**Futásonkénti zaj-seed (M10, 2026-10).** A fenti, Inspectorban megadott
+seed önmagában minden futásban ugyanazt a zajsorozatot adná. A
+`reset_position` parancs opcionális `noise_seed` mezőjével (lásd
+`docs/protocol.md`) a zaj futásonként eltér, de reprodukálható marad: a
+szenzor ilyenkor a `zajSeed * 31 + noise_seed` értékkel indítja újra a
+generátort (`ColorSensor.ZajUjrainditasa`). `noise_seed` nélkül a
+viselkedés a régi. A mérések a futtató `--seed N` kapcsolójával az i.
+futásban N + i − 1 értéket küldik, és a metaadatban rögzítik.
+
+### Aktuális paraméterek
+
+| Paraméter | Érték | Megjegyzés |
+|---|---|---|
+| Zaj szórása (`zajSzoras`) | 0.05 | Gauss, az intenzitásra adva, utána 0–1-re vágva |
+| Küszöb (`kuszob`) | 0.5 | lásd Kalibráció |
+| Lecsengési sáv a vonal szélén | 0.1 m | a kódban rögzített (`FolytonosIntenzitas`) |
+| Késleltetés (`kesesFixedUpdateKeretekben`) | 0 | kikapcsolva |
+| Mérés-kimaradás (`meresKimaradasValoszinusege`) | 0 | kikapcsolva |
+
 A háromszenzoros elrendezésben mindhárom szenzor **eltérő** seedet
 kapott (12345 / 12346 / 12347), hogy a zajuk ne legyen egymással
 korrelált — ez reálisabb, mint ha mindhárom szenzor azonos zajmintát
@@ -81,9 +100,13 @@ feleslegesen.
 
 | Szenzor      | Helyi X (RoverChassis-hoz képest) | Zaj Seed |
 |--------------|-----------------------------------|----------|
-| SensorCenter | ≈ -0.115                          | 12345    |
+| SensorCenter | 0                                 | 12345    |
 | SensorLeft   | -0.3                               | 12346    |
 | SensorRight  | 0.3                                | 12347    |
+
+A középső szenzor eredetileg (M07) ≈ -0.115-ös X-eltolással került a
+jelenetbe; később a rover tengelyére került (X = 0), a táblázat a
+`unity/Assets/Prefabs/RoverChassis.prefab` jelenlegi értékeit mutatja.
 
 Mindhárom szenzor Z-eltolása megegyezik (≈0.264), vagyis a rover
 elülső éle előtt helyezkednek el — ez stabilabb, "előretekintő"

@@ -196,7 +196,15 @@
       ],
       "properties": {
         "request_id": {
-          "$ref": "#/$defs/request_id"
+          "oneOf": [
+            {
+              "$ref": "#/$defs/request_id"
+            },
+            {
+              "const": ""
+            }
+          ],
+          "description": "A keres azonositoja; ures string, ha a hibas kerelembol nem volt kiolvashato."
         },
         "status": {
           "enum": [
@@ -275,6 +283,20 @@
           "type": "integer",
           "minimum": 0,
           "description": "M10: privilegizalt diagnosztika."
+        },
+        "message": {
+          "type": "string",
+          "description": "Emberi olvasasra szant uzenet. Sikeres reset_position-nel kulcs=ertek mezok (scenario, timescale, obstacles, active, schedule), lasd docs/protocol.md."
+        },
+        "last_command_result": {
+          "type": "string",
+          "pattern": "^(none|[a-z_]+:(completed|error))$",
+          "description": "Csak get_status-nal: az utolso parancs rovid osszefoglaloja, soha nem a teljes valasz."
+        },
+        "sim_time_s": {
+          "type": "number",
+          "minimum": 0.0,
+          "description": "2026-10-26: szimulacios ido a jelenet betoltese ota (s). Privilegizalt diagnosztika: az adapter elrejti."
         }
       },
       "additionalProperties": false

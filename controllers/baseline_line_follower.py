@@ -43,6 +43,10 @@ from common.kiserlet_naplo import KiserletMetaadat, KiserletNaplozo
 ALAPERTELMEZETT_HOST = "127.0.0.1"
 ALAPERTELMEZETT_PORT = 8765
 MAXIMALIS_FRAME_MERET = 16 * 1024
+# A gateway a move/turn valaszat a mozgas vegen kuldi, es 15 s utan ERROR-ra valt
+# (docs/protocol.md, Korlatok). Ennel hosszabb csendet mar nem varunk ki: a kliens
+# korabban vegtelen ideig blokkolt, ha a Unity megallt vagy a Play leallt.
+VALASZ_TIMEOUT_S = 30.0
 NAPLO_FAJL = Path(__file__).resolve().parent.parent / "logs" / "m09_runs.jsonl"
 KISERLET_NAPLO_FAJL = Path(__file__).resolve().parent.parent / "logs" / "kiserlet_naplo.jsonl"
 CONTROLLER_NEV = "baseline_line_follower"
@@ -124,6 +128,7 @@ class FutasStatisztika:
     akadaly_kerulesek_szama: int = 0
     zsakutcak_szama: int = 0
     palyaelhagyas: bool = False
+    run_id: str = ""
     utkozott: bool = False
     utkozesek_szama: int = 0
     kezdet: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
@@ -144,14 +149,26 @@ def privilegizalt_diagnosztika_mezok(observe: dict[str, Any]) -> dict[str, Any]:
         "position": observe.get("position"),
         "collision_occurred": observe.get("collision_occurred"),
         "collision_count": observe.get("collision_count"),
+        # 2026-10-26: szimulacios ido; timescale 70 mellett a fali idobelyeg
+        # nem mutatja a futas valodi (szimulalt) idotartamat.
+        "sim_time_s": observe.get("sim_time_s"),
     }
+
+
+class GatewayHiba(RuntimeError):
+    """A gateway elutasitotta a parancsot, vagy a valasz nem a kerdeshez tartozik."""
 
 
 class GatewayKliens:
     def __init__(self, host: str, port: int) -> None:
+<<<<<<< HEAD
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.settimeout(10.0)  # <-- Itt állítjuk be a socket timeoutot
         self.socket.connect((host, port))
+=======
+        self.socket = socket.create_connection((host, port), timeout=5)
+        self.socket.settimeout(VALASZ_TIMEOUT_S)
+>>>>>>> eaf15e1d41e5b3e7c51c73cda11b34faac27b785
 
         # A korábbi settimeout(None) törölhető vagy maradhat, de a 10s védi a csatlakozást.
     def kuld(self, parancs: dict[str, Any]) -> dict[str, Any]:
@@ -163,10 +180,16 @@ class GatewayKliens:
         self.socket.sendall(len(payload).to_bytes(4, "big", signed=False))
         self.socket.sendall(payload)
 
-        hossz_prefix = self._pontosan_fogad(4)
-        valasz_hossz = int.from_bytes(hossz_prefix, "big", signed=False)
-        valasz_payload = self._pontosan_fogad(valasz_hossz)
-        return json.loads(valasz_payload.decode("utf-8"))
+        try:
+            hossz_prefix = self._pontosan_fogad(4)
+            valasz_hossz = int.from_bytes(hossz_prefix, "big", signed=False)
+            valasz_payload = self._pontosan_fogad(valasz_hossz)
+        except socket.timeout as hiba:
+            raise ConnectionError(
+                f"Nem jott valasz {VALASZ_TIMEOUT_S:.0f} s alatt a(z) "
+                f"{parancs['command']} parancsra (all a Unity, vagy leallt a Play?)."
+            ) from hiba
+        return valasz_ellenorzese(parancs, valasz_payload)
 
     def _pontosan_fogad(self, hossz: int) -> bytes:
         reszek: list[bytes] = []
@@ -181,6 +204,33 @@ class GatewayKliens:
 
     def close(self) -> None:
         self.socket.close()
+
+
+def valasz_ellenorzese(parancs: dict[str, Any], valasz_payload: bytes) -> dict[str, Any]:
+    """A valasz a kerdeshez tartozik-e, es nem elutasitas-e.
+
+    Korabban a kontroller minden valaszt elfogadott: egy elutasitott move/turn
+    (pl. 15 s-os parancs-timeout utani ERROR allapot) csendben elveszett, es a futas
+    ertelmetlen adatokkal folytatodott. Most az elutasitas megallitja a futast.
+    """
+    try:
+        valasz = json.loads(valasz_payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as hiba:
+        raise GatewayHiba(f"Ervenytelen JSON valasz a(z) {parancs['command']} parancsra.") from hiba
+    if not isinstance(valasz, dict):
+        raise GatewayHiba(f"A(z) {parancs['command']} parancsra nem JSON objektum jott.")
+    if valasz.get("status") == "failed":
+        hiba = valasz.get("error") or {}
+        raise GatewayHiba(
+            f"A gateway elutasitotta a(z) {parancs['command']} parancsot: "
+            f"{hiba.get('code')} {hiba.get('name')} - {hiba.get('message')}"
+        )
+    if valasz.get("request_id") != parancs.get("request_id"):
+        raise GatewayHiba(
+            f"A(z) {parancs['command']} parancsra mas kereshez tartozo valasz jott "
+            f"(request_id: {valasz.get('request_id')!r})."
+        )
+    return valasz
 
 
 def hibajel_szamitasa(observe_valasz: dict[str, Any]) -> float:
@@ -670,8 +720,12 @@ def egy_lepes_kereses(
         naplo.rogzit(
             lepes_szam,
             szenzor_mezok(observe),
+<<<<<<< HEAD
             [turn_parancs],
             
+=======
+            kiadott_parancsok,
+>>>>>>> eaf15e1d41e5b3e7c51c73cda11b34faac27b785
             Allapot.KERESES.value,
             Allapot.KERESES.value,
             privilegizalt_diagnosztika_mezok(observe),
@@ -686,7 +740,9 @@ def _szcenario_nev(reset_valasz: object) -> str | None:
     uzenet = str(reset_valasz.get("message", ""))
     if "scenario=" not in uzenet:
         return None
-    return (uzenet.split("scenario=", 1)[1].split() or [None])[0]
+    # Ures nevnel az uzenet "scenario= timescale=70" - a korabbi split() ilyenkor a
+    # kovetkezo mezot ("timescale=70") adta vissza szcenarionevkent.
+    return uzenet.split("scenario=", 1)[1].split(" ", 1)[0].strip()
 
 
 def _time_scale(reset_valasz: object) -> float | None:
@@ -699,6 +755,64 @@ def _time_scale(reset_valasz: object) -> float | None:
         return float(uzenet.split("timescale=", 1)[1].split()[0])
     except (ValueError, IndexError):
         return None
+
+
+def _uzenet_mezo(reset_valasz: object, kulcs: str) -> str | None:
+    """Egy 'kulcs=ertek' mezo a reset valaszanak uzenetebol (None, ha nincs benne)."""
+    if not isinstance(reset_valasz, dict):
+        return None
+    for resz in str(reset_valasz.get("message", "")).split():
+        if resz.startswith(kulcs + "="):
+            return resz[len(kulcs) + 1 :]
+    return None
+
+
+SZCENARIO_MAPPA = Path(__file__).resolve().parent.parent / "experiments" / "scenarios"
+
+
+def akadaly_ellenorzes(reset_valasz: object, szcenario_nev: str) -> dict[str, Any]:
+    """Az akadalyok tenyleg jelen vannak-e a reset utan, a szcenariofajl szerint.
+
+    Masodik audit / hibas train-meres: kikapcsolt TrackController mellett a
+    szcenario neve stimmelt, de egyetlen akadaly sem jelent meg, es a meres
+    eszrevetlenul 0 akadallyal futott. A Unity a reset valaszaban kozli az
+    akadalyok szamat (obstacles), a lathatokat (active) es hogy az utemezes
+    fut-e (schedule); ezt vetjuk ossze a szcenario JSON-javal (t = 0-ban
+    lathato akadalyok). Elteresnel RuntimeError.
+    """
+    fajl = SZCENARIO_MAPPA / f"{szcenario_nev}.json"
+    try:
+        akadalyok = json.loads(fajl.read_text(encoding="utf-8")).get("obstacles", [])
+    except (OSError, ValueError) as hiba:
+        raise RuntimeError(f"A szcenariofajl nem olvashato: {fajl}") from hiba
+    elvart_db = len(akadalyok)
+    elvart_aktiv = sum(
+        1
+        for a in akadalyok
+        if a["schedule"]["appear_at_s"] <= 0.0 < a["schedule"]["disappear_at_s"]
+    )
+    mezok = {k: _uzenet_mezo(reset_valasz, k) for k in ("obstacles", "active", "schedule")}
+    if None in mezok.values():
+        raise RuntimeError(
+            "A Unity reset-valasza nem tartalmazza az akadaly-mezoket (obstacles/active/"
+            "schedule). Huzd le a legfrissebb Unity-szkripteket, es inditsd ujra a Play-t."
+        )
+    try:
+        jelentett_db, jelentett_aktiv = int(mezok["obstacles"]), int(mezok["active"])
+    except ValueError as hiba:
+        raise RuntimeError(f"Ertelmezhetetlen akadaly-mezok: {mezok}") from hiba
+    if elvart_db and mezok["schedule"] != "on":
+        raise RuntimeError(
+            "Az akadaly-utemezes nem fut (schedule=off): a TrackController komponens ki van "
+            "kapcsolva. Edit modban kapcsold be, mentsd a jelenetet, majd inditsd ujra a Play-t."
+        )
+    if jelentett_db != elvart_db or jelentett_aktiv != elvart_aktiv:
+        raise RuntimeError(
+            f"Az akadalyok nem a szcenario szerint allnak: a Unity {jelentett_db} akadalyt, "
+            f"ebbol {jelentett_aktiv} lathatot jelent; a '{szcenario_nev}' szerint "
+            f"{elvart_db} kell, ebbol {elvart_aktiv} lathato a futas elejen."
+        )
+    return {"akadalyok": jelentett_db, "lathato_akadalyok_kezdetben": jelentett_aktiv}
 
 
 def _parameterek() -> dict:
@@ -746,6 +860,7 @@ def futtat(
     akadaly_lepesek = [0]
     fordulat_osszeg = [0.0]
     run_id = str(uuid4())
+    stat.run_id = run_id
     naplo = (
         KiserletNaplozo(
             kiserlet_naplo_fajl,
@@ -771,18 +886,28 @@ def futtat(
             reset_parancs["noise_seed"] = seed
         reset_valasz = kliens.kuld(reset_parancs)
         szcenario = _szcenario_nev(reset_valasz)
+        if elvart_szcenario and not szcenario:
+            raise RuntimeError(
+                "A Unity nem jelentett betoltott szcenariot (ures nev). Edit modban ellenorizd, "
+                "hogy a TrackController be van-e kapcsolva es a Scenario mezoben a fajlnev all, "
+                "mentsd a jelenetet, majd inditsd ujra a Play-t."
+            )
         if elvart_szcenario and szcenario != elvart_szcenario:
             raise RuntimeError(
                 f"A Unityben a(z) '{szcenario}' szcenario van betoltve, "
                 f"a mereshez '{elvart_szcenario}' kell."
             )
+        akadaly_meta = (
+            akadaly_ellenorzes(reset_valasz, elvart_szcenario) if elvart_szcenario else {}
+        )
         if naplo:
             naplo.metaadat_rogzitese(
                 seed=seed,
-                scenario=szcenario,
+                scenario=szcenario or None,
                 time_scale=_time_scale(reset_valasz),
                 max_lepes=max_lepes,
                 parameterek=_parameterek(),
+                **akadaly_meta,
                 **_git_allapot(),
             )
 
@@ -833,6 +958,7 @@ def futtat(
 def naplo_iras(stat: FutasStatisztika) -> None:
     NAPLO_FAJL.parent.mkdir(parents=True, exist_ok=True)
     bejegyzes = {
+        "run_id": stat.run_id,
         "kezdet": stat.kezdet,
         "vege": datetime.now(timezone.utc).isoformat(),
         "lepesek_szama": stat.lepesek_szama,

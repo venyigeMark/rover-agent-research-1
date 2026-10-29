@@ -121,6 +121,10 @@ class RoverGatewayProtocolFuzzTest(unittest.TestCase):
             raise unittest.SkipTest(
                 f"A Unity Play Mode szerver nem érhető el: {HOST}:{PORT} ({hiba})"
             ) from hiba
+        # Bemelegito keres hosszu timeouttal: a Play inditasa utani elso keres
+        # (JIT, elso FixedUpdate-ek) tobb masodpercig is tarthat, es kulonben az
+        # abece szerint elso teszt setUp-ja futna 2 s-os timeoutba (2026-10-26).
+        keres(uj_keres("get_status"), timeout=30.0)
 
     def setUp(self) -> None:
         # A tesztek egymástól függetlenül álló roverrel induljanak.
@@ -151,6 +155,45 @@ class RoverGatewayProtocolFuzzTest(unittest.TestCase):
         stop = keres(uj_keres("stop"), timeout=ROVID_TIMEOUT)
         strukturalt_valasz_ellenorzese(self, stop)
         self.assertIn(stop["status"], {"accepted", "completed"}, stop)
+
+    def test_elo_valaszok_megfelelnek_a_semanak(self) -> None:
+        """2026-10-26: a valodi szerverkimenet a docs/protocol.schema.json szerint.
+
+        Korabban a sema csak kezzel irt peldakon volt ellenorizve; a valodi
+        valaszokban "error": {"code": 0, ...} allt null helyett, a message es a
+        last_command_result mezot pedig a sema nem is ismerte.
+        """
+        try:
+            import jsonschema
+        except ImportError:
+            self.skipTest("A jsonschema nincs telepitve (requirements-ci.txt).")
+        from pathlib import Path
+
+        sema = json.loads(
+            (Path(__file__).resolve().parents[1] / "docs" / "protocol.schema.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        sema.pop("oneOf", None)
+        sema["$ref"] = "#/$defs/valasz"
+        validator = jsonschema.Draft202012Validator(sema)
+        self.biztosit_idle_allapotot()
+        valaszok = [
+            keres(uj_keres("observe"), timeout=ROVID_TIMEOUT),
+            keres(uj_keres("get_status"), timeout=ROVID_TIMEOUT),
+            keres(uj_keres("reset_position"), timeout=ROVID_TIMEOUT),
+            keres(uj_keres("move", distance_m=0.05, max_speed=0.2)),
+            keres(uj_keres("turn", angle_deg=5.0, max_angular_speed=20.0)),
+            keres(uj_keres("get_status"), timeout=ROVID_TIMEOUT),
+            keres(uj_keres("move", distance_m=5.0, max_speed=0.2), timeout=ROVID_TIMEOUT),
+            nyers_keres('{"request_id":', ROVID_TIMEOUT),
+        ]
+        for valasz in valaszok:
+            hibak = [h.message for h in validator.iter_errors(valasz)]
+            self.assertEqual(hibak, [], valasz)
+        self.assertIsNone(valaszok[0]["error"])
+        self.assertIn("sim_time_s", valaszok[0])
+        self.assertEqual(valaszok[5]["last_command_result"], "turn:completed")
 
     def test_move_randomizalt_tartomanyok(self) -> None:
         rng = random.Random(SEED)

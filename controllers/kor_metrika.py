@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
-"""Task success (teljesitett kor) es koridő szamitasa lepesenkenti naplobol.
-
-Az M09-M11 meresek a vonalvesztest, parancsszamot, utkozest es palyaelhagyast
-mertek, de a kiiras M09-es pontja szerinti "koridő" es a task success (sikerult-e
-a rovernek korbeernie a palyat) nem volt kozvetlenul merve. Ez a szkript ezt
-potolja - utolag is, barmelyik korabbi lepesnaplora.
+"""Task success, koridő es egyseges sikerfeltetel a lepesenkenti naplobol.
 
 Modszer: a lepesenkenti naploban rogzitett privilegizalt pozicio (position)
 alapjan a palya kozeppontja (0, 0) koruli szoget kicsomagoljuk (unwrap), es a
 kumulalt szogelfordulast elosztjuk 2*pi-vel. Ez a "kor-arany": 1.0 = pontosan
 egy teljes kor. A pozicio KIZAROLAG kiertekelesre hasznalhato, a vezerlesre nem
 (lasd docs/protocol.md) - a szkript ezert kulon, utolagos elemzo eszkoz.
+
+2026-10-26 ota:
+- a palya meretei (egyenes, sugar, vonalszelesseg) futasonkent a tenylegesen
+  betoltott szcenariobol jonnek (a <naplo>_meta.jsonl szcenario-mezoje alapjan),
+  nem a train palya rogzitett ertekeibol; ismeretlen szcenarional a regi
+  alapertekek maradnak, es ezt a "geometria" mezo jelzi;
+- a futasszintu osszesitobol (logs/m09_runs.jsonl, run_id alapjan) a
+  palyaelhagyas-jelzo is bekerul, igy egyetlen helyen adodik a SIKERES futas:
+  legalabb 1 teljes kor + 0 utkozes + nincs palyaelhagyas.
 
 Hasznalat:
     python3 controllers/kor_metrika.py                      # az alapertelmezett naplo
@@ -35,11 +39,12 @@ from adapter.backend import (  # noqa: E402
     PALYA_EGYENES_HOSSZ_M,
     PALYA_IV_SUGAR_M,
     PALYA_VONAL_SZELESSEG_M,
-    tavolsag_a_kozepvonaltol,
 )
 
 ALAPERTELMEZETT_NAPLO = GYOKER / "logs" / "kiserlet_naplo.jsonl"
-PALYA_KERULET_M = 2 * PALYA_EGYENES_HOSSZ_M + 2 * math.pi * PALYA_IV_SUGAR_M
+ALAPERTELMEZETT_FUTASNAPLO = GYOKER / "logs" / "m09_runs.jsonl"
+SZCENARIO_MAPPA = GYOKER / "experiments" / "scenarios"
+ALAP_GEOMETRIA = (PALYA_EGYENES_HOSSZ_M, PALYA_IV_SUGAR_M, PALYA_VONAL_SZELESSEG_M)
 
 
 def pozicio(sor: dict) -> dict | None:
@@ -54,7 +59,41 @@ def utkozes_szamlalo(sor: dict) -> int | None:
     return int(ertek) if isinstance(ertek, (int, float)) else None
 
 
-def futas_metrikai(sorok: list[dict]) -> dict:
+def tavolsag(x: float, z: float, hossz: float, sugar: float) -> float:
+    """Tavolsag a stadion kozepvonalatol (a felkorivek csak a sajat oldalukon)."""
+    fel = hossz / 2.0
+
+    def egyenes(allando_x: float) -> float:
+        return math.hypot(x - allando_x, z - max(-fel, min(fel, z)))
+
+    def felkor(kozep_z: float, irany: float) -> float:
+        dz = z - kozep_z
+        return math.inf if dz * irany < 0 else abs(math.hypot(x, dz) - sugar)
+
+    return min(egyenes(sugar), egyenes(-sugar), felkor(-fel, -1.0), felkor(fel, 1.0))
+
+
+def szcenario_geometria(nev: str | None) -> tuple[tuple[float, float, float], str]:
+    """(egyenes, sugar, vonalszelesseg) a szcenariofajlbol; hiba eseten az alapertek."""
+    if nev:
+        fajl = SZCENARIO_MAPPA / f"{nev}.json"
+        try:
+            palya = json.loads(fajl.read_text(encoding="utf-8"))["track"]
+            return (
+                float(palya["straight_length_m"]),
+                float(palya["turn_radius_m"]),
+                float(palya["line_width_m"]),
+            ), nev
+        except (OSError, KeyError, ValueError):
+            pass
+    return ALAP_GEOMETRIA, "alapertelmezett"
+
+
+def futas_metrikai(
+    sorok: list[dict], geometria: tuple[float, float, float] = ALAP_GEOMETRIA
+) -> dict:
+    hossz, sugar, vonal = geometria
+    kerulet = 2 * hossz + 2 * math.pi * sugar
     poziciok = [p for sor in sorok if (p := pozicio(sor))]
     if len(poziciok) < 2:
         return {
@@ -65,12 +104,12 @@ def futas_metrikai(sorok: list[dict]) -> dict:
             "hatekonysag": 0.0,
             "vonalon_arany": 0.0,
             "utkozesek": 0,
+            "palya_kerulet_m": round(kerulet, 2),
         }
 
     kumulalt_szog = 0.0
     for elozo, kovetkezo in zip(poziciok, poziciok[1:]):
         kulonbseg = math.atan2(kovetkezo["z"], kovetkezo["x"]) - math.atan2(elozo["z"], elozo["x"])
-        # kicsomagolas: a -pi..pi ugrasokat visszavezetjuk a valodi elfordulasra
         while kulonbseg > math.pi:
             kulonbseg -= 2 * math.pi
         while kulonbseg < -math.pi:
@@ -81,8 +120,7 @@ def futas_metrikai(sorok: list[dict]) -> dict:
     megtett_ut = sum(
         math.hypot(b["x"] - a["x"], b["z"] - a["z"]) for a, b in zip(poziciok, poziciok[1:])
     )
-    fel_szelesseg = PALYA_VONAL_SZELESSEG_M / 2.0
-    vonalon = sum(1 for p in poziciok if tavolsag_a_kozepvonaltol(p["x"], p["z"]) <= fel_szelesseg)
+    vonalon = sum(1 for p in poziciok if tavolsag(p["x"], p["z"], hossz, sugar) <= vonal / 2.0)
 
     szamlalok = [c for sor in sorok if (c := utkozes_szamlalo(sor)) is not None]
     utkozesek = (max(szamlalok) - min(szamlalok)) if szamlalok else 0
@@ -92,10 +130,24 @@ def futas_metrikai(sorok: list[dict]) -> dict:
         "kor_arany": round(kor_arany, 4),
         "teljes_kor": kor_arany >= 1.0,
         "megtett_ut_m": round(megtett_ut, 2),
-        "hatekonysag": round(kor_arany * PALYA_KERULET_M / megtett_ut, 4) if megtett_ut else 0.0,
+        "hatekonysag": round(kor_arany * kerulet / megtett_ut, 4) if megtett_ut else 0.0,
         "vonalon_arany": round(vonalon / len(poziciok), 4),
         "utkozesek": utkozesek,
+        "palya_kerulet_m": round(kerulet, 2),
     }
+
+
+def jsonl_run_id_szerint(fajl: Path) -> dict[str, dict]:
+    """run_id -> utolso bejegyzes; a run_id nelkuli (regi) sorokat kihagyja."""
+    eredmeny: dict[str, dict] = {}
+    if not fajl.is_file():
+        return eredmeny
+    for sor in fajl.read_text(encoding="utf-8").splitlines():
+        if sor.strip():
+            bejegyzes = json.loads(sor)
+            if bejegyzes.get("run_id"):
+                eredmeny[bejegyzes["run_id"]] = bejegyzes
+    return eredmeny
 
 
 def futasokra_bont(naplo_fajl: Path) -> dict[str, list[dict]]:
@@ -108,15 +160,38 @@ def futasokra_bont(naplo_fajl: Path) -> dict[str, list[dict]]:
     return futasok
 
 
+def kiertekel(naplo_fajl: Path, futasnaplo: Path, utolso: int | None) -> list[dict]:
+    futasok = futasokra_bont(naplo_fajl)
+    meta = jsonl_run_id_szerint(naplo_fajl.with_name(naplo_fajl.stem + "_meta.jsonl"))
+    osszesito = jsonl_run_id_szerint(futasnaplo)
+    azonositok = list(futasok)
+    if utolso:
+        azonositok = azonositok[-utolso:]
+    eredmenyek = []
+    for run_id in azonositok:
+        geometria, forras = szcenario_geometria((meta.get(run_id) or {}).get("scenario"))
+        metrika = futas_metrikai(futasok[run_id], geometria)
+        palyaelhagyas = (osszesito.get(run_id) or {}).get("palyaelhagyas")
+        metrika.update(
+            run_id=run_id,
+            geometria=forras,
+            palyaelhagyas=palyaelhagyas,
+            sikeres=(
+                None
+                if palyaelhagyas is None
+                else bool(metrika["teljes_kor"] and metrika["utkozesek"] == 0 and not palyaelhagyas)
+            ),
+        )
+        eredmenyek.append(metrika)
+    return eredmenyek
+
+
 def kiir(eredmenyek: list[dict], naplo_fajl: Path) -> None:
-    print(f"Kor-metrika ({len(eredmenyek)} futas, {naplo_fajl.name}):")
-    print(f"  Palya kerulete:       {PALYA_KERULET_M:.1f} m")
-    korok = [e["kor_arany"] for e in eredmenyek]
-    utak = [e["megtett_ut_m"] for e in eredmenyek]
-    vonalon = [e["vonalon_arany"] for e in eredmenyek]
-    hatekonysag = [e["hatekonysag"] for e in eredmenyek]
-    utkozesek = [e["utkozesek"] for e in eredmenyek]
-    teljes = sum(1 for e in eredmenyek if e["teljes_kor"])
+    n = len(eredmenyek)
+    print(f"Kor-metrika ({n} futas, {naplo_fajl.name}):")
+    geometriak = sorted({e["geometria"] for e in eredmenyek})
+    keruletek = sorted({e["palya_kerulet_m"] for e in eredmenyek})
+    print(f"  Geometria:            {', '.join(geometriak)} (kerulet: {keruletek} m)")
 
     def sor(nev: str, ertekek: list[float], tizedes: int = 3) -> str:
         atlag = statistics.mean(ertekek)
@@ -126,21 +201,30 @@ def kiir(eredmenyek: list[dict], naplo_fajl: Path) -> None:
             f"min={min(ertekek):.{tizedes}f}, max={max(ertekek):.{tizedes}f}"
         )
 
-    print(sor("Kor-arany:", korok))
-    print(sor("Megtett ut (m):", utak, 1))
-    print(sor("Hatekonysag:", hatekonysag))
-    print(sor("Vonalon toltott arany:", vonalon))
-    print(sor("Utkozesek:", [float(u) for u in utkozesek], 1))
-    print(f"  TASK SUCCESS (teljes kor): {teljes}/{len(eredmenyek)} futas")
-    print(
-        f"  Utkozesmentes futas:       "
-        f"{sum(1 for e in eredmenyek if e['utkozesek'] == 0)}/{len(eredmenyek)}"
-    )
+    print(sor("Kor-arany:", [e["kor_arany"] for e in eredmenyek]))
+    print(sor("Megtett ut (m):", [e["megtett_ut_m"] for e in eredmenyek], 1))
+    print(sor("Hatekonysag:", [e["hatekonysag"] for e in eredmenyek]))
+    print(sor("Vonalon toltott arany:", [e["vonalon_arany"] for e in eredmenyek]))
+    print(sor("Utkozesek:", [float(e["utkozesek"]) for e in eredmenyek], 1))
+    print(f"  TASK SUCCESS (teljes kor): {sum(e['teljes_kor'] for e in eredmenyek)}/{n} futas")
+    print(f"  Utkozesmentes futas:       {sum(e['utkozesek'] == 0 for e in eredmenyek)}/{n}")
+    ismert = [e for e in eredmenyek if e["sikeres"] is not None]
+    if len(ismert) == n:
+        print(f"  Palyaelhagyas:             {sum(bool(e['palyaelhagyas']) for e in ismert)}/{n}")
+        print(
+            f"  SIKERES (kor + 0 utkozes + nincs palyaelhagyas): {sum(e['sikeres'] for e in ismert)}/{n}"
+        )
+    else:
+        print(
+            f"  SIKERES: nem szamolhato - {n - len(ismert)} futashoz nincs run_id-s "
+            "bejegyzes a futasszintu osszesitoben (2026-10-26 elotti futasok)"
+        )
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Task success es koridő a lepesnaplobol")
     parser.add_argument("--naplo-fajl", default=str(ALAPERTELMEZETT_NAPLO))
+    parser.add_argument("--futasnaplo", default=str(ALAPERTELMEZETT_FUTASNAPLO))
     parser.add_argument("--utolso", type=int, default=None, help="Csak az utolso N futas.")
     parser.add_argument("--json", action="store_true", help="Gepi olvashato kimenet.")
     args = parser.parse_args()
@@ -150,17 +234,7 @@ def main() -> int:
         print(f"Nincs ilyen naplofajl: {naplo_fajl}", file=sys.stderr)
         return 2
 
-    futasok = futasokra_bont(naplo_fajl)
-    azonositok = list(futasok)
-    if args.utolso:
-        azonositok = azonositok[-args.utolso :]
-
-    eredmenyek = []
-    for run_id in azonositok:
-        metrika = futas_metrikai(futasok[run_id])
-        metrika["run_id"] = run_id
-        eredmenyek.append(metrika)
-
+    eredmenyek = kiertekel(naplo_fajl, Path(args.futasnaplo), args.utolso)
     if not eredmenyek:
         print("A naplo nem tartalmaz futast.", file=sys.stderr)
         return 2

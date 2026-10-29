@@ -68,10 +68,10 @@ Ez az ellenőrzőlista egy friss gép előkészítését írja le a Python szkri
   python -m pip install --upgrade pip
   ```
 
-- [ ] Ha van `requirements.txt`, telepítsd a Python-függőségeket:
+- [ ] Telepítsd a rögzített Python-függőségeket (lock-fájl):
 
   ```bash
-  python -m pip install -r requirements.txt
+  python -m pip install -r requirements-ci.txt
   ```
 
 ## 5. A telepítés ellenőrzése

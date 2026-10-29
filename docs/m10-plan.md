@@ -451,3 +451,103 @@ rossz irányba indította a visszatérést. Visszavontuk; a mért kód 6ea4858. 
 validációs pályán ezt megelőzően egyetlen futás sem volt. Ugyanez a hiba a
 holdout-mérés (v2) kódjában is benne volt, így a holdout 2/30 részben ennek is
 betudható, a keskeny vonal hatásától utólag nem választható szét.
+
+### Validációs eredmény (a mérés 2026-10-08 után futott) – a kapu teljesült
+
+30 futás a terv szerint: stadium-validation-20261008-always-visible, 80667fa
+(kód = 6ea4858, baseline v3), tiszta munkakönyvtár, zaj-seed 2001–2030.
+
+| Feltétel | Teljesült |
+|---|---|
+| legalább 1 teljes kör | 29/30 |
+| 0 ütközés | 28/30 |
+| nincs pályaelhagyás | 29/30 |
+| **mindhárom (sikeres futás)** | **28/30** |
+
+**28/30 ≥ 16/30: a validációs kapu teljesült.** Sikertelen: a 12. futás (egy
+ütközés, pályaelhagyás 0,65 körnél) és a 17. (egy ütközés, 2,35 kör).
+
+Korlátok: a generált pálya vonalszélessége 0,198 m, gyakorlatilag azonos a train
+pályáéval, ezért ez a mérés a más pályageometriára és akadályhelyekre való
+általánosítást igazolja, a keskeny vonalra (a holdout fő hibájára) nem. A
+kor_metrika.py itt is a train pálya méreteivel számol (a vonalon töltött arány és
+a hatékonyság érvénytelen; a kör-arány és a pályaelhagyás nem érintett).
+Dinamikus és eltűnő akadályok továbbra sincsenek lefedve. Hátravan: a
+train-regresszió (seed 3001–3030, küszöb 25/30).
+
+Adatok: `docs/m10-validacio-meres.json`, `docs/m10-validacio-meta.jsonl`,
+`docs/m10-validacio-futasok.jsonl`.
+
+**Érvénytelen futássorozat (2026-10-26):** a train-regresszió első 30 futása
+(seed 3001–3030) beállítási hiba miatt érvénytelen: a TrackController komponens
+ki volt kapcsolva, így a szcenárió betöltődött, de az akadályok egyetlen futásban
+sem jelentek meg (mind a 30 futásban 0 akadálykerülés). Az eredményt nem
+értékeljük; a mérést ugyanazokkal a seedekkel megismételjük. Tanulság: a futtató
+őre csak a szcenárió nevét ellenőrzi, azt nem, hogy az akadályok ténylegesen
+jelen vannak-e – ez a gyűjtő-issue-ba kerül.
+
+### Train-regresszió (2026-10-26) – teljesült
+
+30 futás: stadium-train-baseline-always-visible, 3705aee (kód = 6ea4858,
+baseline v3), zaj-seed 3001–3030, minden futásban 4 akadálykerülés.
+
+| Feltétel | Teljesült |
+|---|---|
+| legalább 1 teljes kör | 30/30 |
+| 0 ütközés | 29/30 |
+| nincs pályaelhagyás | 30/30 |
+| **mindhárom (sikeres futás)** | **29/30** |
+
+**29/30 ≥ 25/30: a v3 a train pályán nem rosszabb a v1-nél (25/30).** Sikertelen:
+a 23. futás (egy ütközés, 2,35 kör). A metaadatban git_tiszta = False: a
+munkakönyvtárban csak a TrackScene.unity változott (a beállított szcenárió neve
+és a Unity által generált anyag- és pályaadat); a kód a commitolt volt, a
+szcenárió nevét a futtató őre minden futásban ellenőrizte.
+
+**Döntés a terv szerint:** mindkét feltétel teljesült (validáció 28/30, train
+29/30), így a baseline v3 (6ea4858) az M13 összehasonlítási alapja. Nyitva marad:
+keskeny vonalra (holdout) a v3 nincs igazolva; dinamikus és eltűnő akadályok nincsenek
+lefedve; a kor_metrika.py nem a szcenárió geometriájával számol.
+
+Adatok: `docs/m10-v3-train-meres.json`, `docs/m10-v3-train-meta.jsonl`,
+`docs/m10-v3-train-futasok.jsonl`.
+
+---
+
+## Keskeny vonalas mérés – előre rögzített terv (2026-10-26, a mérés előtt)
+
+A v3 baseline-t (6ea4858) eddig csak 0,18–0,198 m-es vonalon mértük; a holdout
+fő nehézsége a keskenyebb (0,16 m-es) vonal volt, és ezt a v3-ra nem igazoltuk.
+Ez a mérés a vonalszélesség hatását választja le: minden más a train pályáéval
+egyezik.
+
+- Pálya: stadium-train-narrow-014-always-visible (típus dev). A train pálya
+  geometriája és akadályai (egyenes 12 m, sugár 4 m, ugyanaz a két akadály,
+  végig láthatóan), egyetlen eltéréssel: vonalszélesség **0,14 m** (a train
+  0,18 m helyett; a validációs tartomány alsó széle, keskenyebb a holdout
+  0,16 m-énél). A pálya a mérés előtt készült, próbafutás nem volt rajta.
+- Kód: a v3 vezérlési logika változatlan (6ea4858 óta a kontroller állapotgépe
+  nem módosult; a 2026-10-26-i commitok a futtatót, a naplózást és a gateway-t
+  érintik). A mért commit a meta `git_commit` mezőjében.
+- 30 futás, 1500 lépés, zaj-seed 4001–4030 (`--seed 4001`), a szcenárió az
+  `aktiv_szcenario.txt`-ből (a jelenet nem módosul), az akadályok jelenlétét
+  a futtató minden futás előtt ellenőrzi.
+- Sikerfeltétel (változatlan): legalább 1 teljes kör + 0 ütközés + nincs
+  pályaelhagyás, a `controllers/kor_metrika.py` SIKERES sora alapján (a
+  szcenárió saját geometriájával).
+- **Kapu: legalább 16/30** (az M10 kapu küszöbe). Viszonyítás: a train pályán
+  29/30. Ha a kapu nem teljesül, a v3-at nem javítjuk utólag ezen a pályán;
+  az eredményt korlátként rögzítjük, és a javítás új, előre regisztrált mérést
+  kap.
+- A futtatás után a kör-metrikához hozzáadott leíró mezők (köridő,
+  kudarc-címke) a sikerfeltételt nem érintik.
+
+**Megszakadt futássorozatok (2026-10-26, nem értékeljük):** a keskeny vonalas
+mérés két indítása technikai hiba miatt megszakadt: a Unity egy futás közben
+30 s-ig nem válaszolt egy `observe` kérésre, és a futtató (a 2a65036 óta) ezzel
+a hibával leállt – az első sorozat a 14., a második a 6. futásnál. Az ok még
+nincs meghatározva (gyanú: a gateway minden kérést és választ a Unity
+Console-ba ír, ami hosszú sorozatnál lassítja a szerkesztőt; ellenőrzés a
+Unity Editor.log alapján). A megszakadt sorozatok eredményét nem nézzük meg és
+nem használjuk; az ok elhárítása után a teljes mérést ugyanazokkal a seedekkel
+(4001–4030) indítjuk újra.

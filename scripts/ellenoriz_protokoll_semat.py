@@ -59,8 +59,46 @@ ERVENYES_VALASZOK = [
         "collision_occurred": False,
         "collision_count": 0,
     },
+    {
+        "request_id": UUID,
+        "status": "completed",
+        "state": "IDLE",
+        "error": None,
+        "message": "A rover visszaallt. scenario=x timescale=70 obstacles=2 active=2 schedule=on",
+        "sim_time_s": 12.5,
+    },
+    {
+        "request_id": UUID,
+        "status": "completed",
+        "state": "IDLE",
+        "error": None,
+        "protocol_version": 1,
+        "last_command_result": "move:completed",
+        "sim_time_s": 3.0,
+    },
+    {
+        "request_id": "",
+        "status": "failed",
+        "state": "IDLE",
+        "error": {"code": 1104, "name": "INVALID_REQUEST_ID", "message": "..."},
+        "message": "...",
+    },
 ]
 ERVENYTELEN_VALASZOK = [
+    # a regi JsonUtility-kimenet: sikeres valasz nem-null hibaobjektummal
+    {
+        "request_id": UUID,
+        "status": "completed",
+        "state": "IDLE",
+        "error": {"code": 0, "name": "", "message": ""},
+    },
+    # a last_command_result soha nem lehet a teljes valasz-JSON
+    {
+        "request_id": UUID,
+        "status": "completed",
+        "state": "IDLE",
+        "last_command_result": '{"request_id":"x","status":"completed"}',
+    },
     {"request_id": UUID, "status": "kesz", "state": "IDLE"},
     {"request_id": UUID, "status": "completed", "state": "FUTAS"},
     {"request_id": UUID, "status": "completed", "state": "IDLE", "sensor_mode": "ketto"},

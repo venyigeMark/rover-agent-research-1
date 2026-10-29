@@ -1,0 +1,56 @@
+{
+  "schema_version": "1.0",
+  "metadata": {
+    "name": "stadium-train-narrow-014-always-visible",
+    "type": "dev",
+    "seed": 3078508241
+  },
+  "track": {
+    "straight_length_m": 12.0,
+    "turn_radius_m": 4.0,
+    "line_width_m": 0.14,
+    "background_color_rgb": {
+      "r": 28,
+      "g": 32,
+      "b": 28
+    }
+  },
+  "obstacles": [
+    {
+      "id": "narrow-box-01",
+      "position_m": {
+        "x": 4.0,
+        "y": 0.396,
+        "z": 2.381
+      },
+      "size_m": {
+        "x": 0.873,
+        "y": 0.792,
+        "z": 0.789
+      },
+      "schedule": {
+        "appear_at_s": 0.0,
+        "visible_for_s": 100000.0,
+        "disappear_at_s": 100000.0
+      }
+    },
+    {
+      "id": "narrow-box-02",
+      "position_m": {
+        "x": -4.0,
+        "y": 0.306,
+        "z": 2.628
+      },
+      "size_m": {
+        "x": 0.818,
+        "y": 0.613,
+        "z": 0.571
+      },
+      "schedule": {
+        "appear_at_s": 0.0,
+        "visible_for_s": 100000.0,
+        "disappear_at_s": 100000.0
+      }
+    }
+  ]
+}

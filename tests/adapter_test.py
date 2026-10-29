@@ -3,13 +3,20 @@
 from __future__ import annotations
 
 import json
+import socket
 import sys
+import threading
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from adapter.backend import MockAkadaly, MockBackend, tavolsag_a_kozepvonaltol  # noqa: E402
+from adapter.backend import (  # noqa: E402
+    MockAkadaly,
+    MockBackend,
+    UnityTcpBackend,
+    tavolsag_a_kozepvonaltol,
+)
 from adapter.orseg import (  # noqa: E402
     ELREJTETT_MEZOK,
     UTKOZES_MEZO,
@@ -279,6 +286,152 @@ class BiztonsagiJavitasokTeszt(unittest.TestCase):
         orseg = Orseg(MindigHibas())
         orseg.lezar("teszt")
         self.assertTrue(orseg.session.lezarva)
+
+
+class SzimulaciosIdoRejtesTeszt(unittest.TestCase):
+    def test_sim_time_nem_jut_el_az_agenshez(self):
+        class IdosBackend(MockBackend):
+            def kuld(self, parancs):
+                valasz = super().kuld(parancs)
+                valasz["sim_time_s"] = 12.5
+                return valasz
+
+        orseg = Orseg(IdosBackend())
+        for valasz in (orseg.observe(), orseg.get_status(), orseg.move(0.1)):
+            self.assertNotIn("sim_time_s", valasz)
+
+
+class UtkozesResetTeszt(unittest.TestCase):
+    """Audit: resetkor a rover nullazza a szamlalot; az adapter referenciaja nem maradhat a regin."""
+
+    def test_reset_utan_az_elso_utkozes_is_latszik(self):
+        backend = MockBackend(akadalyok=[MockAkadaly(x=4.0, z=0.5)])
+        orseg = Orseg(backend)
+        for _ in range(2):  # ket utkozes: a szamlalo 2
+            orseg.move(0.5)
+            orseg.observe()
+        self.assertEqual(orseg.reset_position()["status"], "completed")
+        self.assertEqual(backend.utkozesek, 0, "a mock is nullaz, mint a Unity")
+        orseg.move(0.5)  # uj futas elso utkozese: a szamlalo 1 (< a regi 2)
+        self.assertTrue(orseg.observe()[UTKOZES_MEZO])
+
+    def test_szamlalo_csokkenese_kivulrol_resetelt_backendnel(self):
+        backend = MockBackend(akadalyok=[MockAkadaly(x=4.0, z=0.5)])
+        orseg = Orseg(backend)
+        for _ in range(2):
+            orseg.move(0.5)
+            orseg.observe()
+        backend.kuld({"command": "reset_position"})  # az adapter megkerulesevel
+        orseg.move(0.5)
+        self.assertTrue(orseg.observe()[UTKOZES_MEZO])
+
+
+class StopNyugtaTeszt(unittest.TestCase):
+    """Audit: backend-hiba miatti lezaras utan a stop nem adhat hamis nyugtat."""
+
+    def test_backend_hiba_utan_a_stop_nem_completed(self):
+        orseg = Orseg(HibasBackend())
+        orseg.observe()
+        self.assertTrue(orseg.session.lezarva)
+        valasz = orseg.stop()
+        self.assertEqual(valasz["status"], "rejected")
+        self.assertEqual(valasz["error"]["code"], "ADAPTER_STOP_UNCONFIRMED")
+
+    def test_lezaraskori_sikertelen_stop_sem_nyugtazott(self):
+        orseg = Orseg(HibasBackend())
+        orseg.lezar("teszt")
+        self.assertFalse(orseg.session.stop_megerositve)
+        self.assertEqual(orseg.stop()["error"]["code"], "ADAPTER_STOP_UNCONFIRMED")
+
+    def test_sikeres_lezaras_utan_a_stop_nyugtazott(self):
+        orseg = Orseg(MockBackend())
+        orseg.lezar("teszt")
+        self.assertTrue(orseg.session.stop_megerositve)
+        self.assertEqual(orseg.stop()["status"], "completed")
+
+
+class _TesztSzerver:
+    """Egyetlen kapcsolatot kiszolgalo helyi TCP-szerver; a valaszt `valaszolo(keres)` adja.
+
+    A valaszolo bytes-t ad vissza (a nyers, keretezett valaszt), vagy None-t, ha a
+    szerver valasz nelkul bontja a kapcsolatot.
+    """
+
+    def __init__(self, valaszolo) -> None:
+        self._szerver = socket.create_server(("127.0.0.1", 0))
+        self.port = self._szerver.getsockname()[1]
+        self._valaszolo = valaszolo
+        self._szal = threading.Thread(target=self._fut, daemon=True)
+        self._szal.start()
+
+    def _fut(self) -> None:
+        kapcsolat, _ = self._szerver.accept()
+        with kapcsolat:
+            while True:
+                fej = kapcsolat.recv(4)
+                if len(fej) < 4:
+                    return
+                hossz = int.from_bytes(fej, "big")
+                adat = b""
+                while len(adat) < hossz:
+                    adat += kapcsolat.recv(hossz - len(adat))
+                valasz = self._valaszolo(json.loads(adat.decode("utf-8")))
+                if valasz is None:
+                    return
+                kapcsolat.sendall(valasz)
+
+    def close(self) -> None:
+        self._szerver.close()
+
+
+def _keret(obj) -> bytes:
+    payload = json.dumps(obj).encode("utf-8")
+    return len(payload).to_bytes(4, "big") + payload
+
+
+class UnityTcpBackendTeszt(unittest.TestCase):
+    """A valodi TCP-backend keretezese es hibakezelese, Unity nelkul."""
+
+    def _backend(self, valaszolo) -> UnityTcpBackend:
+        szerver = _TesztSzerver(valaszolo)
+        self.addCleanup(szerver.close)
+        backend = UnityTcpBackend("127.0.0.1", szerver.port, timeout_s=2.0)
+        self.addCleanup(backend.close)
+        return backend
+
+    def test_oda_vissza_keretezes_es_request_id(self):
+        kapott = []
+
+        def valaszolo(keres):
+            kapott.append(keres)
+            return _keret({"request_id": keres["request_id"], "status": "completed"})
+
+        backend = self._backend(valaszolo)
+        self.assertEqual(backend.kuld({"command": "observe"})["status"], "completed")
+        self.assertEqual(kapott[0]["command"], "observe")
+        self.assertEqual(len(kapott[0]["request_id"]), 36)
+
+    def test_idegen_request_id_hiba(self):
+        backend = self._backend(lambda k: _keret({"request_id": "masik", "status": "completed"}))
+        with self.assertRaises(ConnectionError):
+            backend.kuld({"command": "observe"})
+
+    def test_tul_nagy_valaszkeret_hiba(self):
+        backend = self._backend(lambda k: (10**6).to_bytes(4, "big"))
+        with self.assertRaises(ConnectionError):
+            backend.kuld({"command": "observe"})
+
+    def test_megszakadt_kapcsolat_hiba(self):
+        backend = self._backend(lambda k: None)
+        with self.assertRaises(ConnectionError):
+            backend.kuld({"command": "observe"})
+
+    def test_orseg_a_tcp_hibat_egyseges_hibava_alakitja(self):
+        backend = self._backend(lambda k: None)
+        orseg = Orseg(backend)
+        valasz = orseg.observe()
+        self.assertEqual(valasz["error"]["code"], "ADAPTER_BACKEND_ERROR")
+        self.assertEqual(orseg.stop()["error"]["code"], "ADAPTER_STOP_UNCONFIRMED")
 
 
 if __name__ == "__main__":

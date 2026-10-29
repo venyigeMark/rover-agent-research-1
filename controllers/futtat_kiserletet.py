@@ -51,6 +51,12 @@ def main() -> int:
         return 2
     summarize_szkript = projekt_gyoker / "controllers" / "summarize_runs.py"
 
+    if not args.elvart_szcenario:
+        print(
+            "Figyelem: --elvart-szcenario nelkul nem ellenorizzuk, melyik palya van betoltve. "
+            "Elozetesen regisztralt meresnel mindig add meg.",
+            file=sys.stderr,
+        )
     print(f"=== {args.futasok_szama} futas inditasa ({kontroller_szkript.name}) ===")
     for i in range(1, args.futasok_szama + 1):
         print(f"--- Futas {i}/{args.futasok_szama} ---")

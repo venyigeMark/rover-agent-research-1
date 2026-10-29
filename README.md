@@ -21,7 +21,11 @@ maga is AI coding agentekkel történik (Codex M01–M06, Claude M06 végétől)
 | Lezárt mérföldkövek | m01–m12, plusz m10.5 / m10.6 / m10.7 utólagos finomítások |
 | M10 | train szcenárión 25/30 (2026-10-08); a holdout-pályán a mérés lefutott, az eredmény 2/30 (v2/kevert kód), így az M10 kapu jelenleg nem teljesült. (`docs/m10-plan.md`) |
 | Következő | **m13** — agent-vezérelt rover, a baseline-hoz mérve |
+<<<<<<< HEAD
 | Tesztek | 46 Python + 21 adapter-teszt + 10 Unity Edit/Play Mode teszt |
+=======
+| Tesztek | 67 Python + 32 adapter-teszt + 10 Unity Edit/Play Mode teszt |
+>>>>>>> eaf15e1d41e5b3e7c51c73cda11b34faac27b785
 | CI | tesztek, szcenárió- és protokoll-sémavalidáció, `black`, `pyflakes`, dokumentáció-ellenőrzés |
 
 ### A baseline kontroller mért teljesítménye

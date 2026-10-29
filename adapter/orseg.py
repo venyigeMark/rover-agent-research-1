@@ -1,8 +1,8 @@
 """Biztonsagi reteg az agent es a rover backend koze (M12).
 
 Feladatai (a kiiras M12 pontjai szerint):
-- csak a szukseges muveleteket engedi at (observe, move, turn, stop,
-  reset_position) - get_status/reset_error es minden mas parancs le van tiltva.
+- csak a szukseges muveleteket engedi at (observe, get_status, move, turn, stop,
+  reset_position) - a reset_error es minden mas parancs le van tiltva.
   A reset_position az adapter szintjen engedelyezett, de az MCP-szerver NEM
   teszi ki agent-eszkozkent (lasd a metodus docstringjet);
 - minden parametert a backend ELOTT validal: ervenytelen hivas nem jut el a
@@ -44,7 +44,8 @@ from adapter.backend import (
 )
 
 ENGEDELYEZETT_PARANCSOK = ("observe", "get_status", "move", "turn", "stop", "reset_position")
-ELREJTETT_MEZOK = ("position", "speed", "collision_occurred", "collision_count")
+# sim_time_s (2026-10-26): a szimulacios ido elarulna, hogy szimulator all mogotte.
+ELREJTETT_MEZOK = ("position", "speed", "collision_occurred", "collision_count", "sim_time_s")
 # Az utkozes-erzekelo (bumper/IMU) egy valodi roveren is letezne, ezert az agent
 # megkapja - de csak "az utolso observe ota tortent-e utkozes" bool formaban, nem
 # a szimulator kumulativ szamlalojakent (abbol statisztika lenne visszafejtheto).
@@ -70,6 +71,8 @@ class SessionAllapot:
     elutasitott: int = 0
     utolso_utkozes_szamlalo: int = 0
     utkozes_az_utolso_parancs_ota: bool = False
+    # Lezaraskor a rover nyugtazta-e a stopot (None: a session meg nyitott).
+    stop_megerositve: bool | None = None
 
 
 class BackendHiba(Exception):
@@ -148,14 +151,21 @@ class Orseg:
         """A stop mindig atmegy, lezart sessionben is (biztonsagi muvelet).
 
         Ha a session mar lezarult, a backend is le van zarva - ilyenkor nem
-        probalunk ujra kuldeni (az mar hibahoz vezetne), hanem nyugtazzuk, hogy
-        a rover a lezaraskor kikuldott stop miatt all.
+        probalunk ujra kuldeni (az mar hibahoz vezetne). Csak akkor nyugtazzuk,
+        hogy a rover all, ha a lezaraskor kikuldott stopot a rover vissza is
+        igazolta. Backend-hiba miatti lezarasnal stop nem ment ki; korabban az
+        adapter ilyenkor is "completed"-et adott, ami hamis nyugta volt.
         """
         if self.session.lezarva:
-            return {
-                "status": "completed",
-                "note": "the rover was already stopped when the session closed",
-            }
+            if self.session.stop_megerositve:
+                return {
+                    "status": "completed",
+                    "note": "the rover was already stopped when the session closed",
+                }
+            return _adapter_hiba(
+                "ADAPTER_STOP_UNCONFIRMED",
+                "session closed; the rover was not reachable, so the stop could not be confirmed",
+            )
         self.session.parancsok += 1
         return self._backend_hivas({"command": "stop"})
 
@@ -167,7 +177,14 @@ class Orseg:
         szimulacio all a backend mogott. A kiserleti futasok kozotti resetet a
         meresindito szkript vegzi ezen a metoduson keresztul.
         """
-        return self._vegrehajt({"command": "reset_position"})
+        valasz = self._vegrehajt({"command": "reset_position"})
+        if valasz.get("status") == "completed":
+            # A rover resetkor nullazza az utkozesszamlalot. Ha a mi
+            # referenciank a regi erteken maradna, az uj futas elso utkozesei
+            # (1, 2, ... a regi ertekig) nem novelnek, es elvesznenek.
+            self.session.utolso_utkozes_szamlalo = 0
+            self.session.utkozes_az_utolso_parancs_ota = False
+        return valasz
 
     def get_status(self) -> dict[str, Any]:
         """A rover allapotgepe: IDLE / MOVING / TURNING / ERROR.
@@ -220,9 +237,12 @@ class Orseg:
         self.session.lezarva = True
         self.session.lezaras_oka = ok
         try:
-            self._backend.kuld({"command": "stop"})
+            valasz = self._backend.kuld({"command": "stop"})
+            self.session.stop_megerositve = (
+                isinstance(valasz, dict) and valasz.get("status") == "completed"
+            )
         except Exception:  # noqa: BLE001
-            pass
+            self.session.stop_megerositve = False
         finally:
             try:
                 self._backend.close()
@@ -236,6 +256,7 @@ class Orseg:
             return
         self.session.lezarva = True
         self.session.lezaras_oka = ok
+        self.session.stop_megerositve = False
         try:
             self._backend.close()
         except Exception:  # noqa: BLE001
@@ -307,6 +328,10 @@ class Orseg:
         """
         szamlalo = valasz.get("collision_count")
         if isinstance(szamlalo, int):
+            if szamlalo < self.session.utolso_utkozes_szamlalo:
+                # A szamlalo csokkent: a backend kozben resetelt (nem rajtunk at).
+                # Az uj szamlalot nullarol merjuk, kulonben az utkozesek elvesznek.
+                self.session.utolso_utkozes_szamlalo = 0
             if szamlalo > self.session.utolso_utkozes_szamlalo:
                 self.session.utkozes_az_utolso_parancs_ota = True
             self.session.utolso_utkozes_szamlalo = szamlalo

@@ -4,12 +4,19 @@
 A repoba commitolt experiments/referencia_epizod/referencia_epizod.jsonl
 lepesenkenti naplobol kiszamolja a futas metrikait, osszeveti az
 elvart.json-ban rogzitett ertekekkel, es elkesziti a replay-kepet.
+
+A replay-kep alapertelmezes szerint a logs/ ala kerul (nem verziokovetett).
+Korabban az ellenorzes a verziokovetett docs/screenshots/referencia_replay.png-t
+irta felul: egy friss klonban mar az elso ellenorzes "piszkos" munkafat hagyott
+(a PNG bajtjai matplotlib-verzionkent elternek), es egy utana inditott meres
+metaadataban git_tiszta=False lett volna. A dokumentalt kep csak --rogzit-tel
+frissul.
 Nem igenyel futo Unity-t. Sikertelen egyezes eseten nem-nulla
 kilepesi koddal ter vissza (CI-ban is fut).
 
 Hasznalat:
   python3 scripts/referencia_epizod.py            # ellenorzes
-  python3 scripts/referencia_epizod.py --rogzit   # elvart.json ujrairasa
+  python3 scripts/referencia_epizod.py --rogzit   # elvart.json es a dokumentalt kep ujrairasa
 """
 
 from __future__ import annotations
@@ -25,7 +32,8 @@ GYOKER = Path(__file__).resolve().parent.parent
 EPIZOD_MAPPA = GYOKER / "experiments" / "referencia_epizod"
 NAPLO = EPIZOD_MAPPA / "referencia_epizod.jsonl"
 ELVART = EPIZOD_MAPPA / "elvart.json"
-KEP = GYOKER / "docs" / "screenshots" / "referencia_replay.png"
+DOKUMENTALT_KEP = GYOKER / "docs" / "screenshots" / "referencia_replay.png"
+ELLENORZO_KEP = GYOKER / "logs" / "referencia_replay.png"
 
 
 def betolt() -> list[dict]:
@@ -74,8 +82,8 @@ def metrikak(sorok: list[dict]) -> dict:
     }
 
 
-def replay_kep(run_id: str) -> None:
-    KEP.parent.mkdir(parents=True, exist_ok=True)
+def replay_kep(run_id: str, kep: Path) -> None:
+    kep.parent.mkdir(parents=True, exist_ok=True)
     parancs = [
         sys.executable,
         str(GYOKER / "controllers" / "replay_visualizer.py"),
@@ -84,7 +92,7 @@ def replay_kep(run_id: str) -> None:
         "--run-id",
         run_id,
         "--kimenet",
-        str(KEP),
+        str(kep),
     ]
     eredmeny = subprocess.run(parancs)
     if eredmeny.returncode != 0:
@@ -117,7 +125,9 @@ def main() -> int:
         print("OK: a referenciaepizod metrikai megegyeznek az elvart ertekekkel.")
 
     if not args.kep_nelkul:
-        replay_kep(m["run_id"])
+        kep = DOKUMENTALT_KEP if args.rogzit else ELLENORZO_KEP
+        replay_kep(m["run_id"], kep)
+        print(f"Replay-kep: {kep}")
     return 0
 
 

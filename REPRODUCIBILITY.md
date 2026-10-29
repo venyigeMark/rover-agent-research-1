@@ -58,7 +58,7 @@ python3 tests/scenario_seed_test.py -v
 ### Szcenárió validátor (M06)
 
 ```bash
-pip install jsonschema
+python -m pip install -r requirements-ci.txt
 python3 experiments/scenario_validator.py "experiments/scenarios/*.json"
 ```
 
@@ -110,13 +110,15 @@ metrikákat (`elvart.json`).
 ```bash
 git clone https://github.com/Dalma1991/rover-agent-research.git
 cd rover-agent-research
-pip install matplotlib
+python -m pip install -r requirements-ci.txt
 python3 scripts/referencia_epizod.py
 ```
 
 Elvárt kimenet: a szkript kiírja a metrikákat, `OK: a referenciaepizod
 metrikai megegyeznek az elvart ertekekkel.` üzenettel zár, és
-elkészíti a `docs/screenshots/referencia_replay.png` replay-képet.
+elkészíti a `logs/referencia_replay.png` replay-képet (nem verziókövetett,
+így az ellenőrzés nem módosítja a munkafát). A dokumentált kép,
+`docs/screenshots/referencia_replay.png`, csak `--rogzit` kapcsolóval frissül.
 Az elvárt értékek (`experiments/referencia_epizod/elvart.json`):
 
 | Metrika | Érték |
@@ -151,23 +153,23 @@ virtuális környezetét nem kell váltani; az MCP-szerver külön indul:
 python3 tests/adapter_test.py -v
 
 # MCP-szerver mock backenddel (izolált 3.12-es környezetben)
-uv run --no-project --python 3.12 --with mcp \
+uv run --no-project --python 3.12 --with-requirements requirements-mcp.txt \
   python adapter/mcp_szerver.py --backend mock --mock-akadalyokkal
 
 # MCP-szerver élő Unity ellen (Play mód szükséges)
-uv run --no-project --python 3.12 --with mcp \
+uv run --no-project --python 3.12 --with-requirements requirements-mcp.txt \
   python adapter/mcp_szerver.py --backend unity
 
 # a tool schema újraexportálása / ellenőrzése
-uv run --no-project --python 3.12 --with mcp python scripts/export_tool_schema.py
-uv run --no-project --python 3.12 --with mcp python scripts/export_tool_schema.py --ellenoriz
+uv run --no-project --python 3.12 --with-requirements requirements-mcp.txt python scripts/export_tool_schema.py
+uv run --no-project --python 3.12 --with-requirements requirements-mcp.txt python scripts/export_tool_schema.py --ellenoriz
 ```
 
 Claude Code-hoz így regisztrálható (a repó gyökeréből):
 
 ```bash
 claude mcp add rover -- "$HOME/.local/bin/uv" run --no-project --python 3.12 \
-  --with mcp python "$PWD/adapter/mcp_szerver.py" --backend mock --mock-akadalyokkal
+  --with-requirements "$PWD/requirements-mcp.txt" python "$PWD/adapter/mcp_szerver.py" --backend mock --mock-akadalyokkal
 claude mcp list
 ```
 
@@ -263,7 +265,21 @@ a `.git` 500 MB fölé nőne. Addig a fenti szabály elegendő.
 ## Az M10 kapu mérésének reprodukálása (2026-10-08)
 
 A Unityben a `TrackScene` szcenáriója legyen
-`stadium-train-baseline-always-visible`, Play módban, az ablak előtérben:
+`stadium-train-baseline-always-visible`, Play módban, az ablak előtérben.
+
+**Szcenárió kiválasztása a jelenet módosítása nélkül (2026-10-26-tól).** A
+jelenetet mérés előtt ne írd át és ne mentsd: a munkafa „piszkos" lenne, és a
+metaadatban `git_tiszta=False` állna. Helyette a nem verziókövetett
+`experiments/scenarios/aktiv_szcenario.txt` fájl első sora választja ki a
+szcenáriót (felülírja az Inspector mezőjét), és utána indítsd a Play-t:
+
+```bash
+echo stadium-train-baseline-always-visible > experiments/scenarios/aktiv_szcenario.txt
+```
+
+A fájl törlése után ismét az Inspectorban beállított szcenárió töltődik be.
+A betöltött szcenáriót és az akadályok jelenlétét a futtató a reset-válaszból
+ellenőrzi (`--elvart-szcenario`).
 
 ```bash
 python3 controllers/futtat_kiserletet.py --futasok-szama 30 --max-lepes 1500 \

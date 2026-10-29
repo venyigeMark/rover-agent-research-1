@@ -1,7 +1,7 @@
 """MCP-szerver a rover vezerlesehez (M12, 3. munkacsomag).
 
 Az agent (Claude Code) ezen a hat eszkozon keresztul latja a rovert:
-observe, move, turn, stop, session_status.
+observe, get_status, move, turn, stop, session_status.
 
 A reset_position SZANDEKOSAN nem agent-eszkoz: egy valodi rovert nem lehet
 teleportalni, tehat ez a muvelet elarulna, hogy szimulacio all mogotte (lasd
@@ -12,12 +12,14 @@ metoduson keresztul.
 Amit az agent NEM kap meg:
 - shell- vagy fajlrendszer-hozzaferest,
 - a Unity szimulator privilegizalt mezoit (pozicio, sebesseg, utkozesszamlalo),
-- a v1 protokoll tovabbi parancsait (get_status, reset_error),
+- a v1 protokoll tovabbi parancsait (reset_error, reset_position),
 - azt az informaciot, hogy valodi Unity-szimulacio vagy mock all mogotte.
 
 Inditas (a projekt Python 3.9-es venv-je erintetlen marad):
-    uv run --python 3.12 --with mcp python adapter/mcp_szerver.py --backend mock
-    uv run --python 3.12 --with mcp python adapter/mcp_szerver.py --backend unity
+    uv run --no-project --python 3.12 --with-requirements requirements-mcp.txt \
+        python adapter/mcp_szerver.py --backend mock
+    uv run --no-project --python 3.12 --with-requirements requirements-mcp.txt \
+        python adapter/mcp_szerver.py --backend unity
 
 A --backend valasztas a kiserletvezetoe, nem az agente; az agent szamara a
 ket eset megkulonboztethetetlen.

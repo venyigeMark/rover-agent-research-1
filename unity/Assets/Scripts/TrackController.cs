@@ -116,7 +116,7 @@ public class TrackController : MonoBehaviour
             vonalRenderer = gameObject.AddComponent<LineRenderer>();
         }
 
-        string tartalom = BeolvasSzcenariot(szcenarioFajlNev);
+        string tartalom = BeolvasSzcenariot(AktivSzcenarioFajlNev());
         dokumentum = JsonUtility.FromJson<ScenarioDokumentum>(tartalom);
 
         if (dokumentum == null || dokumentum.track == null)
@@ -150,7 +150,37 @@ public class TrackController : MonoBehaviour
     public void UjrakezdiAkadalyUtemezest()
     {
         utemezesKezdeteS = Time.timeSinceLevelLoad;
+        // Azonnal alkalmazzuk az utemezest, ne csak a kovetkezo Update-ben:
+        // igy a reset valasza mar a valodi lathatosagot jelenti.
+        FrissitAkadalyLathatosagot();
     }
+
+    /// <summary>
+    /// Masodik audit / hibas train-meres (2026-10-26): ha a komponens ki van
+    /// kapcsolva, az Awake lefut (az akadalyok letrejonnek, inaktivan), de az
+    /// Update nem, igy az akadalyok sosem jelennek meg - a meres pedig 0
+    /// akadallyal, eszrevetlenul futott le. Ezek a mezok a reset valaszaba
+    /// kerulnek, es a meresi futtato ellenorzi oket a szcenariofajl alapjan.
+    /// </summary>
+    public int AkadalyokSzama => akadalyok.Count;
+
+    public int AktivAkadalyokSzama
+    {
+        get
+        {
+            int db = 0;
+            foreach (AkadalyPeldany akadaly in akadalyok)
+            {
+                if (akadaly.Objektum != null && akadaly.Objektum.activeSelf)
+                {
+                    db++;
+                }
+            }
+            return db;
+        }
+    }
+
+    public bool UtemezesFut => isActiveAndEnabled;
 
     /// <summary>
     /// A rover szcenariohoz kotott kezdopoza: a jobb oldali egyenes kozepe
@@ -178,6 +208,17 @@ public class TrackController : MonoBehaviour
 
     private void Update()
     {
+        FrissitAkadalyLathatosagot();
+    }
+
+    private void FrissitAkadalyLathatosagot()
+    {
+        // Kikapcsolt komponensnel az utemezes nem fut (az Update sem futna);
+        // a reset sem kapcsolhatja be helyette az akadalyokat.
+        if (!isActiveAndEnabled)
+        {
+            return;
+        }
         float t = Time.timeSinceLevelLoad - utemezesKezdeteS;
 
         foreach (AkadalyPeldany akadaly in akadalyok)
@@ -188,6 +229,40 @@ public class TrackController : MonoBehaviour
                 akadaly.Objektum.SetActive(lathato);
             }
         }
+    }
+
+    /// <summary>
+    /// 2026-10-26: a mereshez hasznalt szcenario a jelenet modositasa nelkul is
+    /// kivalaszthato. Ha letezik az experiments/scenarios/aktiv_szcenario.txt
+    /// (nem verziokovetett) fajl, annak elso sora felulirja az Inspector
+    /// szcenarioFajlNev mezojet. Korabban minden mereshez at kellett irni es
+    /// menteni a TrackScene-t, amitol a munkafa "piszkos" lett (git_tiszta=False),
+    /// es a Unity a generalt vonal-anyagot is ujraszerializalta.
+    /// </summary>
+    private string AktivSzcenarioFajlNev()
+    {
+        string felulirasFajl = Path.Combine(SzcenarioMappa(), "aktiv_szcenario.txt");
+        if (File.Exists(felulirasFajl))
+        {
+            foreach (string sor in File.ReadAllLines(felulirasFajl))
+            {
+                string nev = sor.Trim();
+                if (nev.Length == 0 || nev.StartsWith("#"))
+                {
+                    continue;
+                }
+                return nev.EndsWith(".json") ? nev : nev + ".json";
+            }
+        }
+        return szcenarioFajlNev;
+    }
+
+    private static string SzcenarioMappa()
+    {
+        string gyokerMappa = Path.GetFullPath(
+            Path.Combine(Application.dataPath, "..", "..")
+        );
+        return Path.Combine(gyokerMappa, "experiments", "scenarios");
     }
 
     private string BeolvasSzcenariot(string fajlNev)

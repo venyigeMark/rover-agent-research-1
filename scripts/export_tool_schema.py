@@ -8,7 +8,8 @@ minden eszkoz nevet, leirasat, bemeneti sematjat.
 Futtatas (Python 3.10+ es az mcp csomag kell hozza; a projekt 3.9-es venv-jet
 nem hasznalja):
 
-    uv run --no-project --python 3.12 --with mcp python scripts/export_tool_schema.py
+    uv run --no-project --python 3.12 --with-requirements requirements-mcp.txt \
+        python scripts/export_tool_schema.py
 
 A --ellenoriz kapcsoloval nem ir, hanem osszeveti a meglevo fajllal, es
 elteres eseten nem-nulla kilepesi koddal ter vissza.

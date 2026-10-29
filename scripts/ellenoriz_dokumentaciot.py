@@ -28,6 +28,7 @@ KIHAGY = ("http", "*")
 FUTASIDOBEN_GENERALT = {
     "logs/kiserlet_naplo.jsonl",  # M11 lepesenkenti naplo (minden futasnal bovul)
     "logs/m10_lepes_naplo.jsonl",  # M10 regi formatumu lepesnaplo (tortenetileg hivatkozott)
+    "logs/referencia_replay.png",  # a referenciaepizod ellenorzesenek replay-kepe
 }
 
 
